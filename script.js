@@ -518,7 +518,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 previewPoint: { x: snappedX, y: snappedY },
                 strokeColor,
                 fillColor,
-                lineThickness
+                lineThickness,
+                // Always filled, not explicitly tracking closed state for preview
+                isClosed: false
             };
             
             redrawCanvas();
@@ -583,13 +585,30 @@ document.addEventListener('DOMContentLoaded', () => {
         // On double-click, we want to use the existing points without adding the final click point again
         // The final click point is already in the linePoints array from the preceding single click
         
+        // Note: We're now filling all multiline shapes regardless of whether they're closed
+        // But we'll still track if the shape is explicitly closed by the user for potential future use
+        const firstPoint = linePoints[0];
+        const lastPoint = linePoints[linePoints.length - 1];
+        
+        // Calculate distance in preview canvas coordinates (pixels)
+        const previewFirstX = firstPoint.x * (targetWidth / sourceWidth);
+        const previewFirstY = firstPoint.y * (targetHeight / sourceHeight);
+        const previewLastX = lastPoint.x * (targetWidth / sourceWidth);
+        const previewLastY = lastPoint.y * (targetHeight / sourceHeight);
+        
+        // If the last point is within 1 grid cell of the first point, consider it explicitly closed
+        // Distance of 1 in preview coordinates means they're in the same or adjacent grid cell
+        const isClosed = Math.abs(previewLastX - previewFirstX) <= 1 && 
+                         Math.abs(previewLastY - previewFirstY) <= 1;
+        
         // Create a final shape representing the multi-segment line
         const lineShape = {
             type: 'multiLine',
             points: [...linePoints], // Copy the points array
             strokeColor,
             fillColor,
-            lineThickness
+            lineThickness,
+            isClosed // Track if the shape is explicitly closed by the user (but we'll fill it regardless)
         };
         
         // Add the complete line to shapes
@@ -778,14 +797,16 @@ document.addEventListener('DOMContentLoaded', () => {
             context.lineWidth = thickness;
         }
         
+        // Helper to consistently apply coordinates
+        const canvasCoord = (value) => Math.floor(value);
+        
         switch (shape.type) {
             case 'rectangle': {
                 // Calculate scaled dimensions and snap to pixel grid
                 const scaledStartX = canvasCoord(shape.startX * scaleX);
                 const scaledStartY = canvasCoord(shape.startY * scaleY);
-                // Use Math.round for width and height to avoid floating point inconsistencies
-                const scaledWidth = Math.round(shape.width * scaleX);
-                const scaledHeight = Math.round(shape.height * scaleY);
+                const scaledWidth = canvasCoord(shape.width * scaleX);
+                const scaledHeight = canvasCoord(shape.height * scaleY);
                 
                 context.beginPath();
                 context.rect(scaledStartX, scaledStartY, scaledWidth, scaledHeight);
@@ -793,18 +814,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 context.stroke();
                 break;
             }
-                
+            
             case 'circle': {
-                // For consistent circle handling, always use width divided by 2 as the radius
-                // Use Math.round for radius calculation to avoid floating point inconsistencies
-                const radius = Math.round(shape.width * scaleX / 2);
+                // Calculate scaled dimensions and snap to pixel grid
+                const scaledStartX = canvasCoord(shape.startX * scaleX);
+                const scaledStartY = canvasCoord(shape.startY * scaleY);
+                const scaledWidth = canvasCoord(shape.width * scaleX);
+                const scaledHeight = canvasCoord(shape.height * scaleY);
+                
                 context.beginPath();
-                context.arc(
-                    canvasCoord(shape.startX * scaleX), // Center X
-                    canvasCoord(shape.startY * scaleY), // Center Y
-                    radius, // Radius - already properly scaled
-                    0, Math.PI * 2
-                );
+                // Calculate radius based on width and height
+                const radius = Math.sqrt(scaledWidth ** 2 + scaledHeight ** 2) / 2;
+                // Use starting point as center
+                context.arc(scaledStartX, scaledStartY, radius, 0, Math.PI * 2);
                 context.fill();
                 context.stroke();
                 break;
@@ -851,6 +873,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     context.lineTo(previewX, previewY);
                 }
                 
+                // Fill without explicitly closing the path
+                context.fill();
                 context.stroke();
                 break;
             }
@@ -954,6 +978,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         code += `ctx.lineTo(${scaledX}, ${scaledY});\n`;
                     }
                     
+                    // Fill without explicitly closing the path
+                    code += `ctx.fill();\n`;
                     code += `ctx.stroke();\n`;
                     break;
                 }
