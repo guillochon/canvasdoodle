@@ -301,6 +301,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // Function to update resize handle visibility and state based on drawing status
+    function updateResizeHandleState() {
+        if (isShapeStarted || isMultiLineDrawing) {
+            // Disable resize handle during drawing
+            resizeHandle.style.pointerEvents = 'none';
+            resizeHandle.style.opacity = '0.3'; // Visual indication that it's disabled
+        } else {
+            // Enable resize handle when not drawing
+            resizeHandle.style.pointerEvents = 'auto';
+            resizeHandle.style.opacity = '1';
+        }
+    }
+    
     // Mouse event listeners for drawing
     canvas.addEventListener('mousedown', (e) => {
         // Ignore clicks on resize handle
@@ -385,16 +398,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 2000);
     });
     
-    // Snap coordinates to pixel centers in the preview canvas
+    // Snap coordinates to the closest integer in the preview canvas
     function snapCoordinatesToPreview(x, y) {
         // Calculate where this point would appear in the preview canvas
         const previewX = x * (targetWidth / sourceWidth);
         const previewY = y * (targetHeight / sourceHeight);
         
-        // Floor the coordinate and add 0.5 to get the pixel center
-        // This ensures we're targeting the center of each pixel, not the boundary
-        const snappedPreviewX = Math.floor(previewX) + 0.5;
-        const snappedPreviewY = Math.floor(previewY) + 0.5;
+        // Round to nearest integer in preview coordinates
+        const snappedPreviewX = Math.round(previewX);
+        const snappedPreviewY = Math.round(previewY);
         
         // Convert back to main canvas coordinates
         const snappedX = snappedPreviewX * (sourceWidth / targetWidth);
@@ -522,6 +534,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Update resize handle state in case the drawing operation finished
         updateResizeHandleState();
+        
+        // Update resize handle state in case drawing operation finished
+        updateResizeHandleState();
     }
 
     // Finish multi-segment line on double-click or right-click
@@ -555,6 +570,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Re-enable resize handle after finishing multiline
         updateResizeHandleState();
+        
+        // Re-enable resize handle after finishing multiline drawing
+        updateResizeHandleState();
     }
 
     // Cancel drawing operations - retained but no longer triggered on mouseout
@@ -569,9 +587,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Re-enable resize handle after canceling drawing
         updateResizeHandleState();
+        
+        // Re-enable resize handle after canceling drawing
+        updateResizeHandleState();
     }
 
-    // Draw a grid on the canvas that represents preview pixel boundaries and centers
+    // Draw a grid on the canvas that represents preview pixel boundaries
     function drawGrid(context, width, height) {
         if (!showGrid) return;
         
@@ -579,8 +600,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const scaleY = sourceHeight / targetHeight;
         
         context.save();
-        
-        // Draw pixel boundaries
         context.strokeStyle = 'rgba(200, 200, 200, 0.4)';
         context.lineWidth = 0.5;
         
@@ -600,19 +619,6 @@ document.addEventListener('DOMContentLoaded', () => {
             context.moveTo(0, canvasY);
             context.lineTo(width, canvasY);
             context.stroke();
-        }
-        
-        // Optionally draw pixel centers (as small dots)
-        context.fillStyle = 'rgba(100, 100, 100, 0.3)';
-        for (let x = 0; x < targetWidth; x++) {
-            for (let y = 0; y < targetHeight; y++) {
-                // Draw a dot at each pixel center
-                const centerX = (x + 0.5) * scaleX;
-                const centerY = (y + 0.5) * scaleY;
-                context.beginPath();
-                context.arc(centerX, centerY, 1, 0, Math.PI * 2);
-                context.fill();
-            }
         }
         
         // Highlight every 10th line for better visibility
