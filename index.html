@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Doodle to Code</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Canvas Doodle to Code</h1>
+        
+        <div class="app-container">
+            <div class="left-container">
+                <div class="drawing-container">
+                    <div class="toolbar">
+                        <div class="tool-group">
+                            <button id="rect-btn" class="tool-btn active" data-shape="rectangle">Rectangle</button>
+                            <button id="circle-btn" class="tool-btn" data-shape="circle">Circle</button>
+                            <button id="line-btn" class="tool-btn" data-shape="line">Line</button>
+                        </div>
+                        <div class="tool-group">
+                            <div class="color-picker">
+                                <label for="stroke-color">Stroke:</label>
+                                <input type="color" id="stroke-color" value="#000000">
+                            </div>
+                            <div class="color-picker">
+                                <label for="fill-color">Fill:</label>
+                                <input type="color" id="fill-color" value="#ffffff">
+                            </div>
+                            <div class="color-picker">
+                                <label for="bg-color">Background:</label>
+                                <input type="color" id="bg-color" value="#ffffff">
+                                <button id="transparent-bg" class="mini-btn" title="Transparent Background">Clear</button>
+                            </div>
+                        </div>
+                        <div class="tool-group">
+                            <button id="clear-btn" class="action-btn">Clear Canvas</button>
+                            <button id="undo-btn" class="action-btn">Undo</button>
+                        </div>
+                    </div>
+                    <div class="canvas-container" id="drawing-container">
+                        <canvas id="drawing-canvas" width="600" height="400"></canvas>
+                        <div class="resize-handle" id="resize-handle"></div>
+                    </div>
+                </div>
+                
+                <div class="dimension-container">
+                    <h3>Target Canvas Dimensions:</h3>
+                    <div class="dimensions-input">
+                        <div class="input-group">
+                            <label for="target-width">Width:</label>
+                            <input type="number" id="target-width" value="300" min="50" max="2000">
+                            <span>px</span>
+                        </div>
+                        <div class="input-group">
+                            <label for="target-height">Height:</label>
+                            <input type="number" id="target-height" value="200" min="50" max="2000">
+                            <span>px</span>
+                        </div>
+                    </div>
+                    <div class="preview-area">
+                        <h4>Preview:</h4>
+                        <canvas id="preview-canvas" width="300" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="code-container">
+                <h3>Canvas Code:</h3>
+                <textarea id="code-output" readonly></textarea>
+                <button id="copy-btn" class="action-btn">Copy Code</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
