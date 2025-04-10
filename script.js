@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let shapes = [];
     let tempShape = null;
     let showGrid = true; // Toggle for grid visibility
+    let isUpdatingFromCode = false; // Flag to prevent recursive updates
 
     // Default colors and thickness
     let strokeColor = '#000000';
@@ -385,14 +386,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 2000);
     });
     
-    // Snap coordinates to pixel centers in the preview canvas
+    // Add event listener for code changes
+    codeOutput.addEventListener('input', () => {
+        // Clear any pending update timers
+        if (window.codeUpdateTimer) {
+            clearTimeout(window.codeUpdateTimer);
+        }
+        
+        // Schedule a new update with a short delay
+        window.codeUpdateTimer = setTimeout(() => {
+            if (!isUpdatingFromCode) {
+                parseCodeAndUpdateCanvas();
+            }
+        }, 100);
+    });
+    
+    // Add a manual update button to force update when automatic updates fail
+    const forceUpdateBtn = document.createElement('button');
+    forceUpdateBtn.id = 'force-update-btn';
+    forceUpdateBtn.className = 'action-btn';
+    forceUpdateBtn.textContent = 'Update From Code';
+    forceUpdateBtn.addEventListener('click', () => {
+        // Force reset the updating flag and parse code
+        isUpdatingFromCode = false;
+        parseCodeAndUpdateCanvas();
+    });
+    
+    // Insert after the copy button
+    copyBtn.parentNode.insertBefore(forceUpdateBtn, copyBtn.nextSibling);
+    
+    // Snap coordinates to grid dots (pixel centers) in the preview canvas
     function snapCoordinatesToPreview(x, y) {
         // Calculate where this point would appear in the preview canvas
         const previewX = x * (targetWidth / sourceWidth);
         const previewY = y * (targetHeight / sourceHeight);
         
-        // Floor the coordinate and add 0.5 to get the pixel center
-        // This ensures we're targeting the center of each pixel, not the boundary
+        // The grid dots are drawn at pixel centers (x+0.5, y+0.5)
+        // Offset by 0.5 to target pixel centers, then round to get to the nearest dot
         const snappedPreviewX = Math.floor(previewX) + 0.5;
         const snappedPreviewY = Math.floor(previewY) + 0.5;
         
@@ -495,18 +525,40 @@ document.addEventListener('DOMContentLoaded', () => {
             updatePreviewCanvas();
         } else if (isShapeStarted) {
             // Rectangle or circle shape preview
-            tempShape = {
-                type: currentShape,
-                startX: drawStartX,
-                startY: drawStartY,
-                width: snappedX - drawStartX,
-                height: snappedY - drawStartY,
-                endX: snappedX,
-                endY: snappedY,
-                strokeColor,
-                fillColor,
-                lineThickness
-            };
+            if (currentShape === 'circle') {
+                // For circles, calculate proper radius based on distance from center to cursor
+                const deltaX = snappedX - drawStartX;
+                const deltaY = snappedY - drawStartY;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                
+                tempShape = {
+                    type: currentShape,
+                    startX: drawStartX,
+                    startY: drawStartY,
+                    // Store the diameter (2 * radius) for consistent handling
+                    width: distance * 2,
+                    height: distance * 2,
+                    endX: snappedX,
+                    endY: snappedY,
+                    strokeColor,
+                    fillColor,
+                    lineThickness
+                };
+            } else {
+                // Rectangle shape
+                tempShape = {
+                    type: currentShape,
+                    startX: drawStartX,
+                    startY: drawStartY,
+                    width: snappedX - drawStartX,
+                    height: snappedY - drawStartY,
+                    endX: snappedX,
+                    endY: snappedY,
+                    strokeColor,
+                    fillColor,
+                    lineThickness
+                };
+            }
 
             redrawCanvas();
             updatePreviewCanvas();
@@ -586,7 +638,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Draw vertical lines for each pixel column in the preview canvas
         for (let x = 0; x <= targetWidth; x++) {
-            const canvasX = x * scaleX;
+            // Use the exact same rounding logic for both grid and shapes
+            const canvasX = Math.round(x * scaleX);
             context.beginPath();
             context.moveTo(canvasX, 0);
             context.lineTo(canvasX, height);
@@ -595,7 +648,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Draw horizontal lines for each pixel row in the preview canvas
         for (let y = 0; y <= targetHeight; y++) {
-            const canvasY = y * scaleY;
+            // Use the exact same rounding logic for both grid and shapes
+            const canvasY = Math.round(y * scaleY);
             context.beginPath();
             context.moveTo(0, canvasY);
             context.lineTo(width, canvasY);
@@ -606,9 +660,9 @@ document.addEventListener('DOMContentLoaded', () => {
         context.fillStyle = 'rgba(100, 100, 100, 0.3)';
         for (let x = 0; x < targetWidth; x++) {
             for (let y = 0; y < targetHeight; y++) {
-                // Draw a dot at each pixel center
-                const centerX = (x + 0.5) * scaleX;
-                const centerY = (y + 0.5) * scaleY;
+                // Draw a dot at each pixel center - use consistent coordinate system
+                const centerX = Math.round((x + 0.5) * scaleX);
+                const centerY = Math.round((y + 0.5) * scaleY);
                 context.beginPath();
                 context.arc(centerX, centerY, 1, 0, Math.PI * 2);
                 context.fill();
@@ -620,7 +674,8 @@ document.addEventListener('DOMContentLoaded', () => {
         context.lineWidth = 1;
         
         for (let x = 0; x <= targetWidth; x += 10) {
-            const canvasX = x * scaleX;
+            // Use exact same rounding logic for consistency
+            const canvasX = Math.round(x * scaleX);
             context.beginPath();
             context.moveTo(canvasX, 0);
             context.lineTo(canvasX, height);
@@ -628,7 +683,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         for (let y = 0; y <= targetHeight; y += 10) {
-            const canvasY = y * scaleY;
+            // Use exact same rounding logic for consistency
+            const canvasY = Math.round(y * scaleY);
             context.beginPath();
             context.moveTo(0, canvasY);
             context.lineTo(width, canvasY);
@@ -649,6 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Draw the grid first so it appears behind all shapes
+        // Drawing grid lines exactly on integers so shapes will align with them
         drawGrid(ctx, canvas.width, canvas.height);
         
         // Draw all saved shapes
@@ -688,6 +745,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.round(value) + 0.5;
     }
 
+    // Helper functions for consistent coordinate handling throughout the app
+    // When drawing on a canvas, we want to align with the grid dots (pixel centers)
+
+    // Use this for coordinates when drawing directly on canvas
+    function canvasCoord(value) {
+        // Match the same snapping logic as snapCoordinatesToPreview
+        return Math.floor(value) + 0.5;
+    }
+
+    // Use this for dimensions and for coordinates in the code generation/parsing
+    function codeCoord(value) {
+        // For consistency with snapCoordinatesToPreview and canvasCoord
+        return Math.floor(value) + 0.5;
+    }
+
     function drawShape(context, shape, scaleX, scaleY = scaleX) {
         context.strokeStyle = shape.strokeColor;
         context.fillStyle = shape.fillColor;
@@ -709,10 +781,11 @@ document.addEventListener('DOMContentLoaded', () => {
         switch (shape.type) {
             case 'rectangle': {
                 // Calculate scaled dimensions and snap to pixel grid
-                const scaledStartX = Math.floor(shape.startX * scaleX);
-                const scaledStartY = Math.floor(shape.startY * scaleY);
-                const scaledWidth = Math.floor(shape.width * scaleX);
-                const scaledHeight = Math.floor(shape.height * scaleY);
+                const scaledStartX = canvasCoord(shape.startX * scaleX);
+                const scaledStartY = canvasCoord(shape.startY * scaleY);
+                // Use Math.round for width and height to avoid floating point inconsistencies
+                const scaledWidth = Math.round(shape.width * scaleX);
+                const scaledHeight = Math.round(shape.height * scaleY);
                 
                 context.beginPath();
                 context.rect(scaledStartX, scaledStartY, scaledWidth, scaledHeight);
@@ -722,17 +795,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
                 
             case 'circle': {
-                // Calculate scaled dimensions and snap to pixel grid
-                const scaledStartX = Math.floor(shape.startX * scaleX);
-                const scaledStartY = Math.floor(shape.startY * scaleY);
-                const scaledWidth = Math.floor(shape.width * scaleX);
-                const scaledHeight = Math.floor(shape.height * scaleY);
-                
+                // For consistent circle handling, always use width divided by 2 as the radius
+                // Use Math.round for radius calculation to avoid floating point inconsistencies
+                const radius = Math.round(shape.width * scaleX / 2);
                 context.beginPath();
-                // Calculate radius based on width and height
-                const radius = Math.sqrt(scaledWidth ** 2 + scaledHeight ** 2) / 2;
-                // Use starting point as center
-                context.arc(scaledStartX, scaledStartY, radius, 0, Math.PI * 2);
+                context.arc(
+                    canvasCoord(shape.startX * scaleX), // Center X
+                    canvasCoord(shape.startY * scaleY), // Center Y
+                    radius, // Radius - already properly scaled
+                    0, Math.PI * 2
+                );
                 context.fill();
                 context.stroke();
                 break;
@@ -740,10 +812,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 
             case 'line': {
                 // Calculate scaled dimensions and snap to pixel grid
-                const scaledStartX = Math.floor(shape.startX * scaleX);
-                const scaledStartY = Math.floor(shape.startY * scaleY);
-                const scaledEndX = Math.floor(shape.endX * scaleX);
-                const scaledEndY = Math.floor(shape.endY * scaleY);
+                const scaledStartX = canvasCoord(shape.startX * scaleX);
+                const scaledStartY = canvasCoord(shape.startY * scaleY);
+                const scaledEndX = canvasCoord(shape.endX * scaleX);
+                const scaledEndY = canvasCoord(shape.endY * scaleY);
                 
                 context.beginPath();
                 context.moveTo(scaledStartX, scaledStartY);
@@ -760,22 +832,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Move to the first point
                 const firstPoint = shape.points[0];
-                const scaledFirstX = Math.floor(firstPoint.x * scaleX);
-                const scaledFirstY = Math.floor(firstPoint.y * scaleY);
+                const scaledFirstX = canvasCoord(firstPoint.x * scaleX);
+                const scaledFirstY = canvasCoord(firstPoint.y * scaleY);
                 context.moveTo(scaledFirstX, scaledFirstY);
                 
                 // Add lines to each subsequent point
                 for (let i = 1; i < shape.points.length; i++) {
                     const point = shape.points[i];
-                    const scaledX = Math.floor(point.x * scaleX);
-                    const scaledY = Math.floor(point.y * scaleY);
+                    const scaledX = canvasCoord(point.x * scaleX);
+                    const scaledY = canvasCoord(point.y * scaleY);
                     context.lineTo(scaledX, scaledY);
                 }
                 
                 // Add preview point if available (for hover effect)
                 if (shape.previewPoint) {
-                    const previewX = Math.floor(shape.previewPoint.x * scaleX);
-                    const previewY = Math.floor(shape.previewPoint.y * scaleY);
+                    const previewX = canvasCoord(shape.previewPoint.x * scaleX);
+                    const previewY = canvasCoord(shape.previewPoint.y * scaleY);
                     context.lineTo(previewX, previewY);
                 }
                 
@@ -786,30 +858,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateCodeOutput() {
-        // Calculate scale factors for code
+        // Set flag to prevent recursive updates
+        isUpdatingFromCode = true;
+        
         const scaleX = targetWidth / sourceWidth;
         const scaleY = targetHeight / sourceHeight;
         
-        let code = `// Canvas setup
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d', { alpha: true });
-
-// Set canvas dimensions
-canvas.width = ${targetWidth};
-canvas.height = ${targetHeight};
-
-// Disable anti-aliasing for sharper edges
-ctx.imageSmoothingEnabled = false;
-
-`;
+        let code = `// Canvas drawing code\n`;
+        code += `const canvas = document.getElementById('canvas');\n`;
+        code += `const ctx = canvas.getContext('2d', { alpha: true });\n`;
+        code += `canvas.width = ${targetWidth};\n`;
+        code += `canvas.height = ${targetHeight};\n\n`;
+        
+        // Disable anti-aliasing for crisp pixel art
+        code += `// Disable anti-aliasing for sharper drawing\n`;
+        code += `ctx.imageSmoothingEnabled = false;\n\n`;
 
         // Add background color if not transparent
         if (bgColor !== null) {
-            code += `// Fill background
-ctx.fillStyle = '${bgColor}';
-ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-`;
+            code += `// Fill background\n`;
+            code += `ctx.fillStyle = '${bgColor}';\n`;
+            code += `ctx.fillRect(0, 0, canvas.width, canvas.height);\n\n`;
         }
 
         shapes.forEach((shape, index) => {
@@ -820,9 +889,10 @@ ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             switch (shape.type) {
                 case 'rectangle': {
-                    // Calculate scaled dimensions
-                    const scaledStartX = Math.round(shape.startX * scaleX);
-                    const scaledStartY = Math.round(shape.startY * scaleY);
+                    // Calculate scaled dimensions using consistent rounding
+                    const scaledStartX = codeCoord(shape.startX * scaleX);
+                    const scaledStartY = codeCoord(shape.startY * scaleY);
+                    // Use Math.round for width and height to match how they're drawn
                     const scaledWidth = Math.round(shape.width * scaleX);
                     const scaledHeight = Math.round(shape.height * scaleY);
                     
@@ -834,26 +904,28 @@ ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
                     
                 case 'circle': {
-                    // Calculate scaled dimensions
-                    const scaledStartX = Math.round(shape.startX * scaleX);
-                    const scaledStartY = Math.round(shape.startY * scaleY);
-                    const scaledWidth = Math.round(shape.width * scaleX);
-                    const scaledHeight = Math.round(shape.height * scaleY);
+                    // For circles, we use startX and startY as the center point
+                    const scaledCenterX = codeCoord(shape.startX * scaleX);
+                    const scaledCenterY = codeCoord(shape.startY * scaleY);
                     
-                    const radius = Math.round(Math.sqrt(scaledWidth ** 2 + scaledHeight ** 2) / 2);
+                    // Calculate radius from the stored width dimension
+                    // We divide by 2 because width and height are diameter, not radius
+                    // Use Math.round to match how radius is calculated when drawing
+                    const radius = Math.round(shape.width * scaleX / 2);
+                    
                     code += `ctx.beginPath();\n`;
-                    code += `ctx.arc(${scaledStartX}, ${scaledStartY}, ${radius}, 0, Math.PI * 2);\n`;
+                    code += `ctx.arc(${scaledCenterX}, ${scaledCenterY}, ${radius}, 0, Math.PI * 2);\n`;
                     code += `ctx.fill();\n`;
                     code += `ctx.stroke();\n`;
                     break;
                 }
                     
                 case 'line': {
-                    // Calculate scaled dimensions
-                    const scaledStartX = Math.round(shape.startX * scaleX);
-                    const scaledStartY = Math.round(shape.startY * scaleY);
-                    const scaledEndX = Math.round(shape.endX * scaleX);
-                    const scaledEndY = Math.round(shape.endY * scaleY);
+                    // Calculate scaled dimensions using consistent rounding
+                    const scaledStartX = codeCoord(shape.startX * scaleX);
+                    const scaledStartY = codeCoord(shape.startY * scaleY);
+                    const scaledEndX = codeCoord(shape.endX * scaleX);
+                    const scaledEndY = codeCoord(shape.endY * scaleY);
                     
                     code += `ctx.beginPath();\n`;
                     code += `ctx.moveTo(${scaledStartX}, ${scaledStartY});\n`;
@@ -870,15 +942,15 @@ ctx.fillRect(0, 0, canvas.width, canvas.height);
                     
                     // First point
                     const firstPoint = shape.points[0];
-                    const scaledFirstX = Math.round(firstPoint.x * scaleX);
-                    const scaledFirstY = Math.round(firstPoint.y * scaleY);
+                    const scaledFirstX = codeCoord(firstPoint.x * scaleX);
+                    const scaledFirstY = codeCoord(firstPoint.y * scaleY);
                     code += `ctx.moveTo(${scaledFirstX}, ${scaledFirstY});\n`;
                     
                     // Additional points
                     for (let i = 1; i < shape.points.length; i++) {
                         const point = shape.points[i];
-                        const scaledX = Math.round(point.x * scaleX);
-                        const scaledY = Math.round(point.y * scaleY);
+                        const scaledX = codeCoord(point.x * scaleX);
+                        const scaledY = codeCoord(point.y * scaleY);
                         code += `ctx.lineTo(${scaledX}, ${scaledY});\n`;
                     }
                     
@@ -891,5 +963,181 @@ ctx.fillRect(0, 0, canvas.width, canvas.height);
         });
         
         codeOutput.value = code;
+        
+        // Reset flag after a short delay to ensure the input event has fired
+        setTimeout(() => {
+            isUpdatingFromCode = false;
+        }, 200);
+    }
+    
+    // Parse code from the code output and update the canvas
+    function parseCodeAndUpdateCanvas() {
+        try {
+            // Set flag to prevent recursive updates
+            isUpdatingFromCode = true;
+            
+            // Store the current cursor position
+            const cursorStart = codeOutput.selectionStart;
+            const cursorEnd = codeOutput.selectionEnd;
+            
+            const code = codeOutput.value;
+            const newShapes = [];
+            let newBgColor = null;
+            
+            // Parse target dimensions
+            const widthMatch = code.match(/canvas\.width\s*=\s*(\d+)/i);
+            const heightMatch = code.match(/canvas\.height\s*=\s*(\d+)/i);
+            
+            if (widthMatch && heightMatch) {
+                const newWidth = parseInt(widthMatch[1]);
+                const newHeight = parseInt(heightMatch[1]);
+                
+                if (newWidth !== targetWidth || newHeight !== targetHeight) {
+                    targetWidth = newWidth;
+                    targetHeight = newHeight;
+                    targetWidthInput.value = newWidth;
+                    targetHeightInput.value = newHeight;
+                    aspectRatio = targetWidth / targetHeight;
+                    resizePreviewCanvas();
+                }
+            }
+            
+            // Parse background color
+            const bgColorMatch = code.match(/\/\/\s*Fill\s*background[\s\S]*?ctx\.fillStyle\s*=\s*'([^']+)'/i);
+            if (bgColorMatch) {
+                newBgColor = bgColorMatch[1];
+                bgColorPicker.value = newBgColor;
+            }
+            
+            // Parse shapes using regular expressions
+            const shapeBlocks = code.split('// Shape');
+            
+            // Skip the first block (before any shapes)
+            for (let i = 1; i < shapeBlocks.length; i++) {
+                const block = shapeBlocks[i];
+                const scaleX = sourceWidth / targetWidth;
+                const scaleY = sourceHeight / targetHeight;
+                
+                // Get shape type
+                const typeMatch = block.match(/:\s*(\w+)/);
+                if (!typeMatch) continue;
+                
+                const type = typeMatch[1];
+                
+                // Get stroke and fill colors
+                const strokeMatch = block.match(/ctx\.strokeStyle\s*=\s*'([^']+)'/i);
+                const fillMatch = block.match(/ctx\.fillStyle\s*=\s*'([^']+)'/i);
+                const lineWidthMatch = block.match(/ctx\.lineWidth\s*=\s*(\d+(?:\.\d+)?)/i);
+                
+                const strokeColor = strokeMatch ? strokeMatch[1] : '#000000';
+                const fillColor = fillMatch ? fillMatch[1] : '#ffffff';
+                const lineThickness = lineWidthMatch ? parseFloat(lineWidthMatch[1]) : 1;
+                
+                let shape = { type, strokeColor, fillColor, lineThickness };
+                
+                // Rectangle parsing
+                if (type === 'rectangle') {
+                    const rectMatch = block.match(/ctx\.rect\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)/i);
+                    if (rectMatch) {
+                        // Coordinates are snapped to grid dots
+                        const startX = codeCoord(parseFloat(rectMatch[1]) * scaleX);
+                        const startY = codeCoord(parseFloat(rectMatch[2]) * scaleY);
+                        // Width and height should be exact integers
+                        const width = Math.round(parseFloat(rectMatch[3]) * scaleX);
+                        const height = Math.round(parseFloat(rectMatch[4]) * scaleY);
+                        
+                        Object.assign(shape, { startX, startY, width, height });
+                        newShapes.push(shape);
+                    }
+                }
+                
+                // Circle parsing
+                else if (type === 'circle') {
+                    const arcMatch = block.match(/ctx\.arc\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,/i);
+                    if (arcMatch) {
+                        // Get the center point and radius from the code
+                        const centerX = parseFloat(arcMatch[1]);
+                        const centerY = parseFloat(arcMatch[2]);
+                        const radius = parseFloat(arcMatch[3]);
+                        
+                        // Center point needs to be placed at grid dots
+                        const startX = codeCoord(centerX * scaleX);
+                        const startY = codeCoord(centerY * scaleY);
+                        
+                        // Ensure consistent diameter/radius calculation
+                        // This matches exactly how we display and generate code for circles
+                        const diameter = Math.round(radius * 2 * scaleX);
+                        const width = diameter;
+                        const height = diameter; // Maintain perfect circle
+                        
+                        Object.assign(shape, { startX, startY, width, height });
+                        newShapes.push(shape);
+                    }
+                }
+                
+                // Line parsing
+                else if (type === 'line') {
+                    const moveToMatch = block.match(/ctx\.moveTo\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)/i);
+                    const lineToMatch = block.match(/ctx\.lineTo\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)/i);
+                    
+                    if (moveToMatch && lineToMatch) {
+                        // Use consistent coordinate handling - no pixel offsets for internal model
+                        const startX = codeCoord(parseFloat(moveToMatch[1]) * scaleX);
+                        const startY = codeCoord(parseFloat(moveToMatch[2]) * scaleY);
+                        const endX = codeCoord(parseFloat(lineToMatch[1]) * scaleX);
+                        const endY = codeCoord(parseFloat(lineToMatch[2]) * scaleY);
+                        
+                        Object.assign(shape, { startX, startY, endX, endY });
+                        newShapes.push(shape);
+                    }
+                }
+                
+                // Multi-line parsing
+                else if (type === 'multiLine') {
+                    const moveToMatch = block.match(/ctx\.moveTo\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)/i);
+                    const lineToMatches = [...block.matchAll(/ctx\.lineTo\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)/gi)];
+                    
+                    if (moveToMatch && lineToMatches.length > 0) {
+                        const points = [
+                            {
+                                x: codeCoord(parseFloat(moveToMatch[1]) * scaleX),
+                                y: codeCoord(parseFloat(moveToMatch[2]) * scaleY)
+                            }
+                        ];
+                        
+                        for (const match of lineToMatches) {
+                            points.push({
+                                x: codeCoord(parseFloat(match[1]) * scaleX),
+                                y: codeCoord(parseFloat(match[2]) * scaleY)
+                            });
+                        }
+                        
+                        Object.assign(shape, { points });
+                        newShapes.push(shape);
+                    }
+                }
+            }
+            
+            // Update the background color and shapes
+            bgColor = newBgColor;
+            shapes = newShapes;
+            
+            // Redraw everything with the parsed data
+            redrawCanvas();
+            updatePreviewCanvas();
+            
+            // Restore cursor position
+            codeOutput.selectionStart = cursorStart;
+            codeOutput.selectionEnd = cursorEnd;
+            
+            // Reset flag after short delay to ensure complete update
+            setTimeout(() => {
+                isUpdatingFromCode = false;
+            }, 200);
+            
+        } catch (error) {
+            console.error('Error parsing code:', error);
+            isUpdatingFromCode = false;
+        }
     }
 });
