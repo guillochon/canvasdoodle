@@ -30,12 +30,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const noFillCheckbox = document.getElementById('no-fill-checkbox'); // Added
 
     // Canvas settings
-    let isDrawing = false;
     let isMultiLineDrawing = false; // For multi-segment line drawing
     let isShapeStarted = false; // Track if a rectangle/circle has been started
     let currentShape = 'rectangle';
     let linePoints = []; // Store points for multi-segment lines
-    let currentMousePos = { x: 0, y: 0 }; // Track current mouse position for line preview
     let shapes = [];
     let tempShape = null;
     let showGrid = true; // Toggle for grid visibility
@@ -238,15 +236,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Implement custom resize handle with strict aspect ratio maintenance
     let isResizing = false;
-    let resizeStartX, resizeStartY;
-    let startWidth, startHeight;
+    let resizeStartX;
+    let startWidth;
     
     resizeHandle.addEventListener('mousedown', (e) => {
         isResizing = true;
         resizeStartX = e.clientX;
-        resizeStartY = e.clientY;
         startWidth = canvasContainer.offsetWidth;
-        startHeight = canvasContainer.offsetHeight;
         document.body.style.cursor = 'nwse-resize';
         e.preventDefault();
     });
@@ -516,9 +512,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const snappedX = snapped.x;
         const snappedY = snapped.y;
         
-        // Update current mouse position for line tool
-        currentMousePos = { x: currentX, y: currentY };
-        
         if (currentShape === 'line' && isMultiLineDrawing) {
             // Create a preview of the multi-segment line
             tempShape = {
@@ -640,7 +633,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Cancel drawing operations - retained but no longer triggered on mouseout
     function cancelDrawing() {
-        isDrawing = false;
         isMultiLineDrawing = false;
         isShapeStarted = false;
         linePoints = [];
@@ -769,24 +761,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper function to snap coordinates to pixel grid for crisp rendering
-    function snapToPixel(value) {
-        return Math.round(value) + 0.5;
-    }
-
     // Helper functions for consistent coordinate handling throughout the app
     // When drawing on a canvas, we want to align with the grid dots (pixel centers)
 
     // Use this for coordinates when drawing directly on canvas
     function canvasCoord(value) {
         // Match the same snapping logic as snapCoordinatesToPreview
-        return Math.floor(value) + 0.5;
+        return Math.floor(value);
     }
 
     // Use this for dimensions and for coordinates in the code generation/parsing
     function codeCoord(value) {
         // For consistency with snapCoordinatesToPreview and canvasCoord
-        return Math.floor(value) + 0.5;
+        return Math.floor(value);
     }
 
     function drawShape(context, shape, scaleX, scaleY = scaleX) {
@@ -806,9 +793,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // For the preview canvas, use the exact thickness as specified
             context.lineWidth = thickness;
         }
-        
-        // Helper to consistently apply coordinates
-        const canvasCoord = (value) => Math.floor(value);
         
         switch (shape.type) {
             case 'rectangle': {
