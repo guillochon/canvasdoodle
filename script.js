@@ -39,6 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let showGrid = true; // Toggle for grid visibility
     let isUpdatingFromCode = false; // Flag to prevent recursive updates
     let isFillEnabled = !noFillCheckbox.checked; // Updated: Initialize based on checkbox state
+    
+    // Arc-specific settings
+    let arcState = 0; // 0: not started, 1: center set, 2: start angle set, 3: end angle set
+    let arcCenter = { x: 0, y: 0 }; // Store arc center point
+    let arcStartPoint = { x: 0, y: 0 }; // Store start angle point
+    let arcRadius = 0; // Store arc radius
 
     // Default colors and thickness
     let strokeColor = '#000000';
@@ -473,6 +479,50 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 lastMouseDownTime = now;
             }
+        } else if (currentShape === 'arc') {
+            // Arc drawing with three-step process
+            if (arcState === 0) {
+                // First click - set center point
+                arcCenter = { x, y };
+                arcState = 1; // Move to step 1: waiting for start angle
+            } else if (arcState === 1) {
+                // Second click - set start angle and radius
+                arcStartPoint = { x, y };
+                arcRadius = Math.sqrt(Math.pow(x - arcCenter.x, 2) + Math.pow(y - arcCenter.y, 2));
+                arcState = 2; // Move to step 2: waiting for end angle
+            } else if (arcState === 2) {
+                // Third click - set end angle and complete the arc
+                const startAngle = Math.atan2(arcStartPoint.y - arcCenter.y, arcStartPoint.x - arcCenter.x);
+                const endAngle = Math.atan2(y - arcCenter.y, x - arcCenter.x);
+                
+                if (tempShape) {
+                    // Create the final arc shape without reticles
+                    const finalShape = {
+                        type: 'arc',
+                        x: arcCenter.x,
+                        y: arcCenter.y,
+                        radius: arcRadius,
+                        startAngle: startAngle,
+                        endAngle: endAngle,
+                        lineWidth: lineThickness,
+                        stroke: strokeColor,
+                        fill: isFillEnabled ? fillColor : 'transparent',
+                        showReticles: false
+                    };
+                    
+                    shapes.push(finalShape);
+                    tempShape = null;
+                    
+                    // Reset arc state
+                    arcState = 0;
+                    
+                    updatePreviewCanvas();
+                    updateCodeOutput();
+                    
+                    // Re-enable resize handle after finishing shape
+                    updateResizeHandleState();
+                }
+            }
         } else {
             // For rectangle and circle
             if (!isShapeStarted) {
@@ -526,6 +576,47 @@ document.addEventListener('DOMContentLoaded', () => {
             
             redrawCanvas();
             updatePreviewCanvas();
+        } else if (currentShape === 'arc' && arcState > 0) {
+            if (arcState === 1) {
+                // First point is center, second point defines radius and start angle
+                arcRadius = Math.sqrt(Math.pow(snappedX - arcCenter.x, 2) + Math.pow(snappedY - arcCenter.y, 2));
+                const startAngle = Math.atan2(snappedY - arcCenter.y, snappedX - arcCenter.x);
+                
+                tempShape = {
+                    type: 'arc',
+                    x: arcCenter.x,
+                    y: arcCenter.y,
+                    radius: arcRadius,
+                    startAngle: startAngle,
+                    endAngle: startAngle, // Initially same as start angle for preview
+                    lineWidth: lineThickness,
+                    stroke: strokeColor,
+                    fill: isFillEnabled ? fillColor : 'transparent',
+                    showReticles: true,
+                    reticles: [arcCenter] // Show reticle at center
+                };
+            } else if (arcState === 2) {
+                // Third point defines end angle
+                const startAngle = Math.atan2(arcStartPoint.y - arcCenter.y, arcStartPoint.x - arcCenter.x);
+                const endAngle = Math.atan2(snappedY - arcCenter.y, snappedX - arcCenter.x);
+                
+                tempShape = {
+                    type: 'arc',
+                    x: arcCenter.x,
+                    y: arcCenter.y,
+                    radius: arcRadius,
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    lineWidth: lineThickness,
+                    stroke: strokeColor,
+                    fill: isFillEnabled ? fillColor : 'transparent',
+                    showReticles: true,
+                    reticles: [arcCenter, arcStartPoint] // Show reticles at center and start angle point
+                };
+            }
+            
+            redrawCanvas();
+            updatePreviewCanvas();
         } else if (isShapeStarted) {
             // Rectangle or circle shape preview
             if (currentShape === 'circle') {
@@ -571,6 +662,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle mouse up for completing regular shapes
     function handleMouseUp(e) {
         if (e.button !== 0) return; // Only handle left-click release
+        
+        // Arc tool is now fully handled in handleMouseDown with the three-click pattern
+        // No need to handle arc completion on mouse up
         
         // We no longer finish shapes on mouse up
         // Shapes are now started with first click and completed with second click
@@ -868,6 +962,50 @@ document.addEventListener('DOMContentLoaded', () => {
                 context.stroke();
                 break;
             }
+            case 'arc': {
+                // Draw an arc
+                context.beginPath();
+                context.arc(
+                    canvasCoord(shape.x * scaleX),
+                    canvasCoord(shape.y * scaleY),
+                    shape.radius * scaleX,
+                    shape.startAngle,
+                    shape.endAngle
+                );
+                if (shape.fill !== 'transparent') {
+                    context.fillStyle = shape.fill;
+                    context.fill();
+                }
+                context.strokeStyle = shape.stroke;
+                context.lineWidth = shape.lineWidth;
+                context.stroke();
+                
+                // Draw reticles for visual guidance during arc creation
+                if (shape.showReticles && shape.reticles) {
+                    const reticleSize = 6; // Size of the reticle crosshair
+                    context.strokeStyle = '#ff0000'; // Red reticles for visibility
+                    context.lineWidth = 1; // Thin lines for reticles
+                    
+                    shape.reticles.forEach(point => {
+                        const rx = canvasCoord(point.x * scaleX);
+                        const ry = canvasCoord(point.y * scaleY);
+                        
+                        // Draw crosshair reticle
+                        context.beginPath();
+                        context.moveTo(rx - reticleSize, ry);
+                        context.lineTo(rx + reticleSize, ry);
+                        context.moveTo(rx, ry - reticleSize);
+                        context.lineTo(rx, ry + reticleSize);
+                        context.stroke();
+                        
+                        // Draw small circle
+                        context.beginPath();
+                        context.arc(rx, ry, reticleSize / 2, 0, Math.PI * 2);
+                        context.stroke();
+                    });
+                }
+                break;
+            }
         }
     }
 
@@ -977,6 +1115,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (shape.fillColor) {
                         code += `ctx.fill();\n`;
                     }
+                    code += `ctx.stroke();\n`;
+                    break;
+                }
+                case 'arc': {
+                    // Handle arc
+                    code += `ctx.beginPath();\n`;
+                    code += `ctx.arc(${codeCoord(shape.x * scaleX)}, ${codeCoord(shape.y * scaleY)}, ${shape.radius * scaleX}, ${shape.startAngle}, ${shape.endAngle});\n`;
+                    if (shape.fill !== 'transparent') {
+                        code += `ctx.fillStyle = '${shape.fill}';\n`;
+                        code += `ctx.fill();\n`;
+                    }
+                    code += `ctx.strokeStyle = '${shape.stroke}';\n`;
+                    code += `ctx.lineWidth = ${shape.lineWidth};\n`;
                     code += `ctx.stroke();\n`;
                     break;
                 }
@@ -1141,6 +1292,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         
                         Object.assign(shape, { points });
+                        newShapes.push(shape);
+                    }
+                }
+                // Arc parsing
+                else if (type === 'arc') {
+                    const arcMatch = block.match(/ctx\.arc\(([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,]+),\s*([^,]+)/i);
+                    if (arcMatch) {
+                        // Get the center point, radius, start angle, and end angle from the code
+                        const centerX = parseFloat(arcMatch[1]);
+                        const centerY = parseFloat(arcMatch[2]);
+                        const radius = parseFloat(arcMatch[3]);
+                        const startAngle = parseFloat(arcMatch[4]);
+                        const endAngle = parseFloat(arcMatch[5]);
+                        
+                        // Center point needs to be placed at grid dots
+                        const x = parseCoord(centerX, scaleX);
+                        const y = parseCoord(centerY, scaleY);
+                        
+                        Object.assign(shape, { x, y, radius, startAngle, endAngle });
                         newShapes.push(shape);
                     }
                 }
