@@ -827,6 +827,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const scaleX = sourceWidth / targetWidth;
         const scaleY = sourceHeight / targetHeight;
         
+        // Auto-disable grid when cell size is too small (less than 2 pixels)
+        if (scaleX < 3 || scaleY < 3) return;
+        
         context.save();
         
         // Draw pixel boundaries
