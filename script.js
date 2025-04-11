@@ -442,6 +442,76 @@ document.addEventListener('DOMContentLoaded', () => {
         
         return { x: snappedX, y: snappedY };
     }
+
+    // Special snapping function for arcs that allows snapping to both cell centers and edges
+    function snapArcCoordinates(x, y) {
+        // Calculate where this point would appear in the preview canvas
+        const previewX = x * (targetWidth / sourceWidth);
+        const previewY = y * (targetHeight / sourceHeight);
+        
+        // Calculate distances to nearest cell center and cell edge
+        const floorX = Math.floor(previewX);
+        const floorY = Math.floor(previewY);
+        
+        // Calculate distances to different snap points
+        const distToCenter = Math.sqrt(
+            Math.pow(previewX - (floorX + 0.5), 2) + 
+            Math.pow(previewY - (floorY + 0.5), 2)
+        );
+        
+        const distToHorizEdge = Math.sqrt(
+            Math.pow(previewX - (floorX + 0.5), 2) + 
+            Math.pow(previewY - Math.round(previewY), 2)
+        );
+        
+        const distToVertEdge = Math.sqrt(
+            Math.pow(previewX - Math.round(previewX), 2) + 
+            Math.pow(previewY - (floorY + 0.5), 2)
+        );
+        
+        // Add new case for corners (both horizontal and vertical edges)
+        const distToCorner = Math.sqrt(
+            Math.pow(previewX - Math.round(previewX), 2) + 
+            Math.pow(previewY - Math.round(previewY), 2)
+        );
+        
+        // Find the minimum distance and corresponding snap point
+        const minDist = Math.min(distToCenter, distToHorizEdge, distToVertEdge, distToCorner);
+        
+        let snappedPreviewX, snappedPreviewY;
+        let snapType = 'center'; // Track what type of snap was chosen for debugging
+        
+        if (minDist === distToCenter) {
+            // Snap to cell center
+            snappedPreviewX = floorX + 0.5;
+            snappedPreviewY = floorY + 0.5;
+            snapType = 'center';
+        } else if (minDist === distToHorizEdge) {
+            // Snap to horizontal edge (center-x, integer-y)
+            snappedPreviewX = floorX + 0.5;
+            snappedPreviewY = Math.round(previewY);
+            snapType = 'horizontal edge';
+        } else if (minDist === distToVertEdge) {
+            // Snap to vertical edge (integer-x, center-y)
+            snappedPreviewX = Math.round(previewX);
+            snappedPreviewY = floorY + 0.5;
+            snapType = 'vertical edge';
+        } else {
+            // Snap to corner (integer-x, integer-y)
+            snappedPreviewX = Math.round(previewX);
+            snappedPreviewY = Math.round(previewY);
+            snapType = 'corner';
+        }
+        
+        // Convert back to main canvas coordinates
+        const snappedX = snappedPreviewX * (sourceWidth / targetWidth);
+        const snappedY = snappedPreviewY * (sourceHeight / targetHeight);
+        
+        // Debug info
+        console.log(`Arc snapping: Input (${x.toFixed(2)}, ${y.toFixed(2)}) → Preview (${previewX.toFixed(2)}, ${previewY.toFixed(2)}) → Snapped to ${snapType} (${snappedPreviewX.toFixed(2)}, ${snappedPreviewY.toFixed(2)}) → Output (${snappedX.toFixed(2)}, ${snappedY.toFixed(2)})`);
+        
+        return { x: snappedX, y: snappedY };
+    }
     
     // Handle mouse down event - start drawing or add line point
     // Track the last mouse down timestamp to prevent double-counting points on double-click
@@ -455,10 +525,14 @@ document.addEventListener('DOMContentLoaded', () => {
         let x = e.clientX - rect.left;
         let y = e.clientY - rect.top;
         
-        // Snap coordinates to preview grid
-        const snapped = snapCoordinatesToPreview(x, y);
-        x = snapped.x;
-        y = snapped.y;
+        // For non-arc tools, apply regular grid snapping
+        if (currentShape !== 'arc') {
+            // Snap coordinates to preview grid
+            const snapped = snapCoordinatesToPreview(x, y);
+            x = snapped.x;
+            y = snapped.y;
+        }
+        // For arc tool, we'll apply special snapping later
         
         // Get current timestamp
         const now = Date.now();
@@ -483,17 +557,28 @@ document.addEventListener('DOMContentLoaded', () => {
             // Arc drawing with three-step process
             if (arcState === 0) {
                 // First click - set center point
-                arcCenter = { x, y };
+                // Make sure we're using the raw mouse coordinates
+                console.log(`First click raw coordinates: (${x}, ${y})`);
+                
+                // For the first centerpoint click, we need to ensure we're not using pre-snapped coordinates
+                const snapped = snapArcCoordinates(x, y);
+                console.log(`First click snapped to: (${snapped.x}, ${snapped.y})`);
+                
+                arcCenter = { x: snapped.x, y: snapped.y };
                 arcState = 1; // Move to step 1: waiting for start angle
             } else if (arcState === 1) {
                 // Second click - set start angle and radius
-                arcStartPoint = { x, y };
-                arcRadius = Math.sqrt(Math.pow(x - arcCenter.x, 2) + Math.pow(y - arcCenter.y, 2));
+                // Use special arc snapping that allows edges and centers
+                const snapped = snapArcCoordinates(x, y);
+                arcStartPoint = { x: snapped.x, y: snapped.y };
+                arcRadius = Math.sqrt(Math.pow(snapped.x - arcCenter.x, 2) + Math.pow(snapped.y - arcCenter.y, 2));
                 arcState = 2; // Move to step 2: waiting for end angle
             } else if (arcState === 2) {
                 // Third click - set end angle and complete the arc
+                // Use special arc snapping that allows edges and centers
+                const snapped = snapArcCoordinates(x, y);
                 const startAngle = Math.atan2(arcStartPoint.y - arcCenter.y, arcStartPoint.x - arcCenter.x);
-                const endAngle = Math.atan2(y - arcCenter.y, x - arcCenter.x);
+                const endAngle = Math.atan2(snapped.y - arcCenter.y, snapped.x - arcCenter.x);
                 
                 if (tempShape) {
                     // Create the final arc shape without reticles
@@ -555,11 +640,17 @@ document.addEventListener('DOMContentLoaded', () => {
         currentX = Math.max(0, Math.min(canvas.width, currentX));
         currentY = Math.max(0, Math.min(canvas.height, currentY));
         
-        // Snap coordinates to preview grid for the actual shape
-        // but keep the unsnapped coordinates for smooth cursor following
-        const snapped = snapCoordinatesToPreview(currentX, currentY);
-        const snappedX = snapped.x;
-        const snappedY = snapped.y;
+        // For non-arc tools, snap coordinates to preview grid
+        let snappedX = currentX;
+        let snappedY = currentY;
+        
+        if (currentShape !== 'arc') {
+            // Snap coordinates to preview grid for the actual shape
+            const snapped = snapCoordinatesToPreview(currentX, currentY);
+            snappedX = snapped.x;
+            snappedY = snapped.y;
+        }
+        // For arc tool, we'll apply special snapping later
         
         if (currentShape === 'line' && isMultiLineDrawing) {
             // Create a preview of the multi-segment line
@@ -579,8 +670,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (currentShape === 'arc' && arcState > 0) {
             if (arcState === 1) {
                 // First point is center, second point defines radius and start angle
-                arcRadius = Math.sqrt(Math.pow(snappedX - arcCenter.x, 2) + Math.pow(snappedY - arcCenter.y, 2));
-                const startAngle = Math.atan2(snappedY - arcCenter.y, snappedX - arcCenter.x);
+                // Use special arc snapping that allows edges and centers directly from raw coordinates
+                // Make sure we're passing the raw coordinates, not pre-snapped ones
+                const snapped = snapArcCoordinates(currentX, currentY);
+                arcRadius = Math.sqrt(Math.pow(snapped.x - arcCenter.x, 2) + Math.pow(snapped.y - arcCenter.y, 2));
+                const startAngle = Math.atan2(snapped.y - arcCenter.y, snapped.x - arcCenter.x);
                 
                 tempShape = {
                     type: 'arc',
@@ -597,8 +691,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             } else if (arcState === 2) {
                 // Third point defines end angle
+                // Use special arc snapping that allows edges and centers
+                const snapped = snapArcCoordinates(currentX, currentY);
                 const startAngle = Math.atan2(arcStartPoint.y - arcCenter.y, arcStartPoint.x - arcCenter.x);
-                const endAngle = Math.atan2(snappedY - arcCenter.y, snappedX - arcCenter.x);
+                const endAngle = Math.atan2(snapped.y - arcCenter.y, snapped.x - arcCenter.x);
                 
                 tempShape = {
                     type: 'arc',
