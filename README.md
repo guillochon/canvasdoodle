@@ -2,6 +2,10 @@
 
 A web application that allows you to draw shapes on a canvas and automatically generates the corresponding JavaScript canvas code.
 
+## Demo
+
+Check out the live demo at [astrocrash.net/canvasdoodle](https://astrocrash.net/canvasdoodle)
+
 ## Features
 
 - **Interactive Drawing Tools**:
