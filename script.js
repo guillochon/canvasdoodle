@@ -324,7 +324,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Only call handleMouseMove if we're over the canvas or a drawing operation is in progress
         if (isShapeStarted || isMultiLineDrawing) {
             // Convert global coordinates to canvas coordinates
-            const rect = canvas.getBoundingClientRect();
             const adjustedEvent = {
                 clientX: e.clientX,
                 clientY: e.clientY,
@@ -349,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('contextmenu', (e) => {
         e.preventDefault(); // Prevent default right-click menu
         if (currentShape === 'line') {
-            finishMultiLine(e);
+            finishMultiLine();
         } else if (isShapeStarted) {
             // Cancel shape drawing on right click
             isShapeStarted = false;
@@ -581,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Finish multi-segment line on double-click or right-click
-    function finishMultiLine(e) {
+    function finishMultiLine() {
         if (!isMultiLineDrawing || linePoints.length < 2) return;
         
         // On double-click, we want to use the existing points without adding the final click point again
@@ -628,19 +627,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCodeOutput();
         
         // Re-enable resize handle after finishing multiline
-        updateResizeHandleState();
-    }
-
-    // Cancel drawing operations - retained but no longer triggered on mouseout
-    function cancelDrawing() {
-        isMultiLineDrawing = false;
-        isShapeStarted = false;
-        linePoints = [];
-        tempShape = null;
-        redrawCanvas();
-        updatePreviewCanvas();
-        
-        // Re-enable resize handle after canceling drawing
         updateResizeHandleState();
     }
 
@@ -774,6 +760,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function codeCoord(value) {
         // For consistency with snapCoordinatesToPreview and canvasCoord
         return Math.floor(value);
+    }
+
+    function parseCoord(value, scale) {
+        // For consistency with snapCoordinatesToPreview and canvasCoord
+        return (Math.floor(parseFloat(value)) + 0.5) * scale;
     }
 
     function drawShape(context, shape, scaleX, scaleY = scaleX) {
@@ -1077,8 +1068,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const rectMatch = block.match(/ctx\.rect\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)/i);
                     if (rectMatch) {
                         // Coordinates are snapped to grid dots
-                        const startX = codeCoord(parseFloat(rectMatch[1]) * scaleX);
-                        const startY = codeCoord(parseFloat(rectMatch[2]) * scaleY);
+                        const startX = parseCoord(rectMatch[1], scaleX);
+                        const startY = parseCoord(rectMatch[2], scaleY);
                         // Width and height should be exact integers
                         const width = Math.round(parseFloat(rectMatch[3]) * scaleX);
                         const height = Math.round(parseFloat(rectMatch[4]) * scaleY);
@@ -1098,8 +1089,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         const radius = parseFloat(arcMatch[3]);
                         
                         // Center point needs to be placed at grid dots
-                        const startX = codeCoord(centerX * scaleX);
-                        const startY = codeCoord(centerY * scaleY);
+                        const startX = parseCoord(centerX, scaleX);
+                        const startY = parseCoord(centerY, scaleY);
                         
                         // Ensure consistent diameter/radius calculation
                         // This matches exactly how we display and generate code for circles
@@ -1119,10 +1110,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     if (moveToMatch && lineToMatch) {
                         // Use consistent coordinate handling - no pixel offsets for internal model
-                        const startX = codeCoord(parseFloat(moveToMatch[1]) * scaleX);
-                        const startY = codeCoord(parseFloat(moveToMatch[2]) * scaleY);
-                        const endX = codeCoord(parseFloat(lineToMatch[1]) * scaleX);
-                        const endY = codeCoord(parseFloat(lineToMatch[2]) * scaleY);
+                        const startX = parseCoord(moveToMatch[1], scaleX);
+                        const startY = parseCoord(moveToMatch[2], scaleY);
+                        const endX = parseCoord(lineToMatch[1], scaleX);
+                        const endY = parseCoord(lineToMatch[2], scaleY);
                         
                         Object.assign(shape, { startX, startY, endX, endY });
                         newShapes.push(shape);
@@ -1137,15 +1128,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (moveToMatch && lineToMatches.length > 0) {
                         const points = [
                             {
-                                x: codeCoord(parseFloat(moveToMatch[1]) * scaleX),
-                                y: codeCoord(parseFloat(moveToMatch[2]) * scaleY)
+                                x: parseCoord(moveToMatch[1], scaleX),
+                                y: parseCoord(moveToMatch[2], scaleY)
                             }
                         ];
                         
                         for (const match of lineToMatches) {
                             points.push({
-                                x: codeCoord(parseFloat(match[1]) * scaleX),
-                                y: codeCoord(parseFloat(match[2]) * scaleY)
+                                x: parseCoord(match[1], scaleX),
+                                y: parseCoord(match[2], scaleY)
                             });
                         }
                         
