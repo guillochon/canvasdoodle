@@ -3,15 +3,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('drawing-canvas');
     const ctx = canvas.getContext('2d', { alpha: true }); // Alpha enabled for transparency
     
-    // Disable anti-aliasing for sharper drawing
-    ctx.imageSmoothingEnabled = false;
-    
     // Preview canvas elements
     const previewCanvas = document.getElementById('preview-canvas');
     const previewCtx = previewCanvas.getContext('2d', { alpha: true }); // Alpha enabled for transparency
-    
-    // Disable anti-aliasing for sharper preview
-    previewCtx.imageSmoothingEnabled = false;
     
     // UI elements
     const codeOutput = document.getElementById('code-output');
@@ -82,9 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update canvas dimensions
         canvas.width = containerWidth;
         canvas.height = containerHeight;
-        
-        // Apply the same settings to the new canvas
-        ctx.imageSmoothingEnabled = false;
         
         // Restore the canvas content
         ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, canvas.width, canvas.height);
@@ -273,9 +264,6 @@ document.addEventListener('DOMContentLoaded', () => {
         sourceWidth = newWidth;
         sourceHeight = newHeight;
         
-        // Make sure anti-aliasing setting is maintained after resize
-        ctx.imageSmoothingEnabled = false;
-        
         // Redraw with new dimensions
         redrawCanvas();
         
@@ -453,54 +441,91 @@ document.addEventListener('DOMContentLoaded', () => {
         const floorX = Math.floor(previewX);
         const floorY = Math.floor(previewY);
         
-        // Calculate distances to different snap points
+        // Find closest cell center (which is at floorX + 0.5, floorY + 0.5)
+        const cellCenterX = floorX + 0.5;
+        const cellCenterY = floorY + 0.5;
+        
+        // Determine if we're already very close to a grid point (center, edge, or corner)
+        // For cell center
         const distToCenter = Math.sqrt(
-            Math.pow(previewX - (floorX + 0.5), 2) + 
-            Math.pow(previewY - (floorY + 0.5), 2)
+            Math.pow(previewX - cellCenterX, 2) + 
+            Math.pow(previewY - cellCenterY, 2)
         );
         
+        // For cell edges (horizontal, vertical) - these are locations where one coordinate is an integer
+        // and the other is at a cell center
+        const roundX = Math.round(previewX); // Nearest integer X (could be cell boundary)
+        const roundY = Math.round(previewY); // Nearest integer Y (could be cell boundary)
+        
         const distToHorizEdge = Math.sqrt(
-            Math.pow(previewX - (floorX + 0.5), 2) + 
-            Math.pow(previewY - Math.round(previewY), 2)
+            Math.pow(previewX - cellCenterX, 2) + 
+            Math.pow(previewY - roundY, 2)
         );
         
         const distToVertEdge = Math.sqrt(
-            Math.pow(previewX - Math.round(previewX), 2) + 
-            Math.pow(previewY - (floorY + 0.5), 2)
+            Math.pow(previewX - roundX, 2) + 
+            Math.pow(previewY - cellCenterY, 2)
         );
         
-        // Add new case for corners (both horizontal and vertical edges)
+        // For cell corners (both coordinates are integers)
         const distToCorner = Math.sqrt(
-            Math.pow(previewX - Math.round(previewX), 2) + 
-            Math.pow(previewY - Math.round(previewY), 2)
+            Math.pow(previewX - roundX, 2) + 
+            Math.pow(previewY - roundY, 2)
         );
         
-        // Find the minimum distance and corresponding snap point
-        const minDist = Math.min(distToCenter, distToHorizEdge, distToVertEdge, distToCorner);
+        // We want a small threshold to detect if we're extremely close to a specific snap point
+        // This makes it easier to intentionally select centers when clicking on them
+        const SNAP_THRESHOLD = 0.1; // Adjust this value to control sensitivity
         
         let snappedPreviewX, snappedPreviewY;
         let snapType = 'center'; // Track what type of snap was chosen for debugging
         
-        if (minDist === distToCenter) {
-            // Snap to cell center
-            snappedPreviewX = floorX + 0.5;
-            snappedPreviewY = floorY + 0.5;
-            snapType = 'center';
-        } else if (minDist === distToHorizEdge) {
-            // Snap to horizontal edge (center-x, integer-y)
-            snappedPreviewX = floorX + 0.5;
-            snappedPreviewY = Math.round(previewY);
-            snapType = 'horizontal edge';
-        } else if (minDist === distToVertEdge) {
-            // Snap to vertical edge (integer-x, center-y)
-            snappedPreviewX = Math.round(previewX);
-            snappedPreviewY = floorY + 0.5;
-            snapType = 'vertical edge';
+        // First check if we're very close to a specific point
+        if (distToCenter < SNAP_THRESHOLD) {
+            // User clicked very close to center - prioritize center
+            snappedPreviewX = cellCenterX;
+            snappedPreviewY = cellCenterY;
+            snapType = 'center (direct)'; 
+        } else if (distToHorizEdge < SNAP_THRESHOLD) {
+            // User clicked very close to horizontal edge - prioritize horizontal edge
+            snappedPreviewX = cellCenterX;
+            snappedPreviewY = roundY;
+            snapType = 'horizontal edge (direct)';
+        } else if (distToVertEdge < SNAP_THRESHOLD) {
+            // User clicked very close to vertical edge - prioritize vertical edge
+            snappedPreviewX = roundX;
+            snappedPreviewY = cellCenterY;
+            snapType = 'vertical edge (direct)';
+        } else if (distToCorner < SNAP_THRESHOLD) {
+            // User clicked very close to corner - prioritize corner
+            snappedPreviewX = roundX;
+            snappedPreviewY = roundY;
+            snapType = 'corner (direct)';
         } else {
-            // Snap to corner (integer-x, integer-y)
-            snappedPreviewX = Math.round(previewX);
-            snappedPreviewY = Math.round(previewY);
-            snapType = 'corner';
+            // Otherwise, find the closest point among all candidates
+            const minDist = Math.min(distToCenter, distToHorizEdge, distToVertEdge, distToCorner);
+            
+            if (minDist === distToCenter) {
+                // Closest to cell center
+                snappedPreviewX = cellCenterX;
+                snappedPreviewY = cellCenterY;
+                snapType = 'center';
+            } else if (minDist === distToHorizEdge) {
+                // Closest to horizontal edge (center-x, integer-y)
+                snappedPreviewX = cellCenterX;
+                snappedPreviewY = roundY;
+                snapType = 'horizontal edge';
+            } else if (minDist === distToVertEdge) {
+                // Closest to vertical edge (integer-x, center-y)
+                snappedPreviewX = roundX;
+                snappedPreviewY = cellCenterY;
+                snapType = 'vertical edge';
+            } else {
+                // Closest to corner (integer-x, integer-y)
+                snappedPreviewX = roundX;
+                snappedPreviewY = roundY;
+                snapType = 'corner';
+            }
         }
         
         // Convert back to main canvas coordinates
@@ -508,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const snappedY = snappedPreviewY * (sourceHeight / targetHeight);
         
         // Debug info
-        console.log(`Arc snapping: Input (${x.toFixed(2)}, ${y.toFixed(2)}) → Preview (${previewX.toFixed(2)}, ${previewY.toFixed(2)}) → Snapped to ${snapType} (${snappedPreviewX.toFixed(2)}, ${snappedPreviewY.toFixed(2)}) → Output (${snappedX.toFixed(2)}, ${snappedY.toFixed(2)})`);
+        console.debug(`Arc snapping: Input (${x.toFixed(2)}, ${y.toFixed(2)}) → Preview (${previewX.toFixed(2)}, ${previewY.toFixed(2)}) → Snapped to ${snapType} (${snappedPreviewX.toFixed(2)}, ${snappedPreviewY.toFixed(2)}) → Output (${snappedX.toFixed(2)}, ${snappedY.toFixed(2)})`);
         
         return { x: snappedX, y: snappedY };
     }
@@ -557,12 +582,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Arc drawing with three-step process
             if (arcState === 0) {
                 // First click - set center point
-                // Make sure we're using the raw mouse coordinates
-                console.log(`First click raw coordinates: (${x}, ${y})`);
                 
                 // For the first centerpoint click, we need to ensure we're not using pre-snapped coordinates
                 const snapped = snapArcCoordinates(x, y);
-                console.log(`First click snapped to: (${snapped.x}, ${snapped.y})`);
                 
                 arcCenter = { x: snapped.x, y: snapped.y };
                 arcState = 1; // Move to step 1: waiting for start angle
@@ -601,6 +623,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Reset arc state
                     arcState = 0;
                     
+                    // Redraw the main canvas to immediately remove reticles
+                    redrawCanvas();
                     updatePreviewCanvas();
                     updateCodeOutput();
                     
@@ -992,6 +1016,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     context.fill();
                 }
                 context.stroke();
+                // Draw reticles for visual guidance during arc creation
+                if (shape.showReticles && shape.reticles) {
+                    const reticleSize = 6; // Size of the reticle crosshair
+                    context.strokeStyle = '#ff0000'; // Red reticles for visibility
+                    context.lineWidth = 1; // Thin lines for reticles
+                    
+                    shape.reticles.forEach(point => {
+                        const rx = canvasCoord(point.x * scaleX);
+                        const ry = canvasCoord(point.y * scaleY);
+                        
+                        // Draw crosshair reticle
+                        context.beginPath();
+                        context.moveTo(rx - reticleSize, ry);
+                        context.lineTo(rx + reticleSize, ry);
+                        context.moveTo(rx, ry - reticleSize);
+                        context.lineTo(rx, ry + reticleSize);
+                        context.stroke();
+                        
+                        // Draw small circle
+                        context.beginPath();
+                        context.arc(rx, ry, reticleSize / 2, 0, Math.PI * 2);
+                        context.stroke();
+                    });
+                }
                 break;
             }
             
@@ -1004,9 +1052,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 context.beginPath();
                 // Calculate radius based on width and height
+                // Allow for half-pixel precision in radius
                 const radius = Math.sqrt(scaledWidth ** 2 + scaledHeight ** 2) / 2;
+                // Round to nearest 0.5 to allow half-pixel precision
+                const preciseRadius = Math.round(radius * 2) / 2;
                 // Use starting point as center
-                context.arc(scaledStartX, scaledStartY, radius, 0, Math.PI * 2);
+                context.arc(scaledStartX, scaledStartY, preciseRadius, 0, Math.PI * 2);
                 if (shape.fillColor) {
                     context.fill();
                 }
@@ -1064,10 +1115,14 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'arc': {
                 // Draw an arc
                 context.beginPath();
+                // Get the radius and allow half-pixel precision
+                const radius = shape.radius * scaleX;
+                // Round to nearest 0.5 to allow half-pixel precision
+                const preciseRadius = Math.round(radius * 2) / 2;
                 context.arc(
                     canvasCoord(shape.x * scaleX),
                     canvasCoord(shape.y * scaleY),
-                    shape.radius * scaleX,
+                    preciseRadius,
                     shape.startAngle,
                     shape.endAngle
                 );
@@ -1117,10 +1172,6 @@ document.addEventListener('DOMContentLoaded', () => {
         code += `const ctx = canvas.getContext('2d', { alpha: true });\n`;
         code += `canvas.width = ${targetWidth};\n`;
         code += `canvas.height = ${targetHeight};\n\n`;
-        
-        // Disable anti-aliasing for crisp pixel art
-        code += `// Disable anti-aliasing for sharper drawing\n`;
-        code += `ctx.imageSmoothingEnabled = false;\n\n`;
 
         // Add background color if not transparent
         if (bgColor !== null) {
@@ -1162,8 +1213,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // Calculate radius from the stored width dimension
                     // We divide by 2 because width and height are diameter, not radius
-                    // Use Math.round to match how radius is calculated when drawing
-                    const radius = Math.round(shape.width * scaleX / 2);
+                    // Allow for half-pixel precision by rounding to nearest 0.5
+                    const radius = Math.round(shape.width * scaleX / 2 * 2) / 2;
                     
                     code += `ctx.beginPath();\n`;
                     code += `ctx.arc(${scaledCenterX}, ${scaledCenterY}, ${radius}, 0, Math.PI * 2);\n`;
@@ -1218,8 +1269,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Handle arc
                     code += `ctx.beginPath();\n`;
                     // The radius is stored in source coordinates internally and needs to be scaled to target coordinates for code
-                    const scaledRadius = Math.round(shape.radius * scaleX);
-                    code += `ctx.arc(${codeCoord(shape.x * scaleX)}, ${codeCoord(shape.y * scaleY)}, ${scaledRadius}, ${shape.startAngle}, ${shape.endAngle});\n`;
+                    // Allow for half-pixel precision by rounding to nearest 0.5
+                    const scaledRadius = Math.round(shape.radius * scaleX * 2) / 2;
+                    
+                    // For arcs, we use exact coordinates (not floored) to support half-cell positions
+                    const exactCenterX = Number((shape.x * scaleX).toFixed(1)); // Keep one decimal place for precision
+                    const exactCenterY = Number((shape.y * scaleY).toFixed(1));
+                    
+                    code += `ctx.arc(${exactCenterX}, ${exactCenterY}, ${scaledRadius}, ${shape.startAngle}, ${shape.endAngle});\n`;
                     if (shape.fillColor) {
                         code += `ctx.fill();\n`;
                     }
@@ -1401,9 +1458,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         const startAngle = parseFloat(arcMatch[4]);
                         const endAngle = parseFloat(arcMatch[5]);
                         
-                        // Center point needs to be placed at grid dots
-                        const x = parseCoord(centerX, scaleX);
-                        const y = parseCoord(centerY, scaleY);
+                        // For arcs, we don't force centers to grid dots (full pixel centers)
+                        // but allow half-pixel positions (centers and edges) as handled by snapArcCoordinates
+                        // So we just scale the coordinates directly without the floor+0.5 snapping
+                        const x = parseFloat(centerX) * scaleX;
+                        const y = parseFloat(centerY) * scaleY;
                         
                         // When we parse the radius from code, we need to convert it back to source coordinates
                         // This means dividing by the EXACT SAME scale factor that was used during code generation
