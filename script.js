@@ -504,9 +504,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         radius: arcRadius,
                         startAngle: startAngle,
                         endAngle: endAngle,
-                        lineWidth: lineThickness,
-                        stroke: strokeColor,
-                        fill: isFillEnabled ? fillColor : 'transparent',
+                        strokeColor: strokeColor,
+                        fillColor: isFillEnabled ? fillColor : null,
+                        lineThickness: lineThickness,
                         showReticles: false
                     };
                     
@@ -589,9 +589,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     radius: arcRadius,
                     startAngle: startAngle,
                     endAngle: startAngle, // Initially same as start angle for preview
-                    lineWidth: lineThickness,
-                    stroke: strokeColor,
-                    fill: isFillEnabled ? fillColor : 'transparent',
+                    strokeColor: strokeColor,
+                    fillColor: isFillEnabled ? fillColor : null,
+                    lineThickness: lineThickness,
                     showReticles: true,
                     reticles: [arcCenter] // Show reticle at center
                 };
@@ -607,9 +607,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     radius: arcRadius,
                     startAngle: startAngle,
                     endAngle: endAngle,
-                    lineWidth: lineThickness,
-                    stroke: strokeColor,
-                    fill: isFillEnabled ? fillColor : 'transparent',
+                    strokeColor: strokeColor,
+                    fillColor: isFillEnabled ? fillColor : null,
+                    lineThickness: lineThickness,
                     showReticles: true,
                     reticles: [arcCenter, arcStartPoint] // Show reticles at center and start angle point
                 };
@@ -972,12 +972,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     shape.startAngle,
                     shape.endAngle
                 );
-                if (shape.fill !== 'transparent') {
-                    context.fillStyle = shape.fill;
+                if (shape.fillColor) {
                     context.fill();
                 }
-                context.strokeStyle = shape.stroke;
-                context.lineWidth = shape.lineWidth;
                 context.stroke();
                 
                 // Draw reticles for visual guidance during arc creation
