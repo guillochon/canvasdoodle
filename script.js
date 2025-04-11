@@ -1214,7 +1214,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'arc': {
                     // Handle arc
                     code += `ctx.beginPath();\n`;
-                    code += `ctx.arc(${codeCoord(shape.x * scaleX)}, ${codeCoord(shape.y * scaleY)}, ${shape.radius * scaleX}, ${shape.startAngle}, ${shape.endAngle});\n`;
+                    // The radius is stored in source coordinates internally and needs to be scaled to target coordinates for code
+                    const scaledRadius = Math.round(shape.radius * scaleX);
+                    code += `ctx.arc(${codeCoord(shape.x * scaleX)}, ${codeCoord(shape.y * scaleY)}, ${scaledRadius}, ${shape.startAngle}, ${shape.endAngle});\n`;
                     if (shape.fillColor) {
                         code += `ctx.fill();\n`;
                     }
@@ -1400,7 +1402,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         const x = parseCoord(centerX, scaleX);
                         const y = parseCoord(centerY, scaleY);
                         
-                        Object.assign(shape, { x, y, radius, startAngle, endAngle });
+                        // When we parse the radius from code, we need to convert it back to source coordinates
+                        // This means dividing by the EXACT SAME scale factor that was used during code generation
+                        // Since in code generation we did: radius * (targetWidth / sourceWidth)
+                        // Here we must do: radius / (targetWidth / sourceWidth) = radius * (sourceWidth / targetWidth)
+                        const scaledRadius = radius * scaleX; // scaleX is sourceWidth / targetWidth when parsing
+                        
+                        Object.assign(shape, { x, y, radius: scaledRadius, startAngle, endAngle });
                         newShapes.push(shape);
                     }
                 }
