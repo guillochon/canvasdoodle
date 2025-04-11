@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const targetHeightInput = document.getElementById('target-height');
     const lineThicknessInput = document.getElementById('line-thickness');
     const thicknessValueDisplay = document.getElementById('thickness-value');
+    const noFillCheckbox = document.getElementById('no-fill-checkbox'); // Added
 
     // Canvas settings
     let isDrawing = false;
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let tempShape = null;
     let showGrid = true; // Toggle for grid visibility
     let isUpdatingFromCode = false; // Flag to prevent recursive updates
+    let isFillEnabled = !noFillCheckbox.checked; // Updated: Initialize based on checkbox state
 
     // Default colors and thickness
     let strokeColor = '#000000';
@@ -198,6 +200,13 @@ document.addEventListener('DOMContentLoaded', () => {
         resizePreviewCanvas();
         updatePreviewCanvas();
         updateCodeOutput();
+    });
+    
+    // No Fill checkbox
+    noFillCheckbox.addEventListener('change', () => {
+        isFillEnabled = !noFillCheckbox.checked;
+        // Optional: Redraw immediately if needed, or wait for next action
+        // redrawCanvasAndGenerateCode();
     });
     
     // Canvas container resize observer
@@ -517,7 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 points: [...linePoints, { x: snappedX, y: snappedY }],
                 previewPoint: { x: snappedX, y: snappedY },
                 strokeColor,
-                fillColor,
+                fillColor: isFillEnabled ? fillColor : null,
                 lineThickness,
                 // Always filled, not explicitly tracking closed state for preview
                 isClosed: false
@@ -543,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     endX: snappedX,
                     endY: snappedY,
                     strokeColor,
-                    fillColor,
+                    fillColor: isFillEnabled ? fillColor : null,
                     lineThickness
                 };
             } else {
@@ -557,7 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     endX: snappedX,
                     endY: snappedY,
                     strokeColor,
-                    fillColor,
+                    fillColor: isFillEnabled ? fillColor : null,
                     lineThickness
                 };
             }
@@ -606,8 +615,9 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'multiLine',
             points: [...linePoints], // Copy the points array
             strokeColor,
-            fillColor,
+            fillColor: isFillEnabled ? fillColor : null,
             lineThickness,
+            // Always filled, not explicitly tracking closed state for preview
             isClosed // Track if the shape is explicitly closed by the user (but we'll fill it regardless)
         };
         
@@ -810,7 +820,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 context.beginPath();
                 context.rect(scaledStartX, scaledStartY, scaledWidth, scaledHeight);
-                context.fill();
+                if (shape.fillColor) {
+                    context.fill();
+                }
                 context.stroke();
                 break;
             }
@@ -827,7 +839,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const radius = Math.sqrt(scaledWidth ** 2 + scaledHeight ** 2) / 2;
                 // Use starting point as center
                 context.arc(scaledStartX, scaledStartY, radius, 0, Math.PI * 2);
-                context.fill();
+                if (shape.fillColor) {
+                    context.fill();
+                }
                 context.stroke();
                 break;
             }
@@ -873,8 +887,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     context.lineTo(previewX, previewY);
                 }
                 
-                // Fill without explicitly closing the path
-                context.fill();
+                if (shape.fillColor) {
+                    context.fill();
+                }
                 context.stroke();
                 break;
             }
@@ -908,7 +923,9 @@ document.addEventListener('DOMContentLoaded', () => {
         shapes.forEach((shape, index) => {
             code += `// Shape ${index + 1}: ${shape.type}\n`;
             code += `ctx.strokeStyle = '${shape.strokeColor}';\n`;
-            code += `ctx.fillStyle = '${shape.fillColor}';\n`;
+            if (shape.fillColor) {
+                code += `ctx.fillStyle = '${shape.fillColor}';\n`;
+            }
             code += `ctx.lineWidth = ${shape.lineThickness || 1};\n`; // Thinner lines for crisper edges
             
             switch (shape.type) {
@@ -922,7 +939,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     code += `ctx.beginPath();\n`;
                     code += `ctx.rect(${scaledStartX}, ${scaledStartY}, ${scaledWidth}, ${scaledHeight});\n`;
-                    code += `ctx.fill();\n`;
+                    if (shape.fillColor) {
+                        code += `ctx.fill();\n`;
+                    }
                     code += `ctx.stroke();\n`;
                     break;
                 }
@@ -939,7 +958,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     code += `ctx.beginPath();\n`;
                     code += `ctx.arc(${scaledCenterX}, ${scaledCenterY}, ${radius}, 0, Math.PI * 2);\n`;
-                    code += `ctx.fill();\n`;
+                    if (shape.fillColor) {
+                        code += `ctx.fill();\n`;
+                    }
                     code += `ctx.stroke();\n`;
                     break;
                 }
@@ -978,8 +999,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         code += `ctx.lineTo(${scaledX}, ${scaledY});\n`;
                     }
                     
-                    // Fill without explicitly closing the path
-                    code += `ctx.fill();\n`;
+                    if (shape.fillColor) {
+                        code += `ctx.fill();\n`;
+                    }
                     code += `ctx.stroke();\n`;
                     break;
                 }
@@ -1033,8 +1055,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (bgColorMatch) {
                 newBgColor = bgColorMatch[1];
                 bgColorPicker.value = newBgColor;
+            } else {
+                // Handle case where background fill code is removed manually
+                newBgColor = null;
+                bgColor = null;
+                bgColorPicker.value = '#ffffff'; // Reset picker to default visually
             }
-            
+
             // Parse shapes using regular expressions
             const shapeBlocks = code.split('// Shape');
             
@@ -1056,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const lineWidthMatch = block.match(/ctx\.lineWidth\s*=\s*(\d+(?:\.\d+)?)/i);
                 
                 const strokeColor = strokeMatch ? strokeMatch[1] : '#000000';
-                const fillColor = fillMatch ? fillMatch[1] : '#ffffff';
+                const fillColor = fillMatch ? fillMatch[1] : null;
                 const lineThickness = lineWidthMatch ? parseFloat(lineWidthMatch[1]) : 1;
                 
                 let shape = { type, strokeColor, fillColor, lineThickness };
@@ -1079,7 +1106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Circle parsing
                 else if (type === 'circle') {
-                    const arcMatch = block.match(/ctx\.arc\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,/i);
+                    const arcMatch = block.match(/ctx\.arc\(([^,]+),\s*([^,]+),\s*([^,]+),/i);
                     if (arcMatch) {
                         // Get the center point and radius from the code
                         const centerX = parseFloat(arcMatch[1]);

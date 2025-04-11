@@ -3,6 +3,13 @@ const fs = require('fs');
 const path = require('path');
 
 const server = http.createServer((req, res) => {
+    // Added: Handle favicon request
+    if (req.url === '/favicon.ico') {
+        res.writeHead(204); // No Content
+        res.end();
+        return; // Stop further processing
+    }
+
     let filePath = '.' + req.url;
     if (filePath === './') {
         filePath = './index.html';
