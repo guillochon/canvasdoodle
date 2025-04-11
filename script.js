@@ -1215,12 +1215,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Handle arc
                     code += `ctx.beginPath();\n`;
                     code += `ctx.arc(${codeCoord(shape.x * scaleX)}, ${codeCoord(shape.y * scaleY)}, ${shape.radius * scaleX}, ${shape.startAngle}, ${shape.endAngle});\n`;
-                    if (shape.fill !== 'transparent') {
-                        code += `ctx.fillStyle = '${shape.fill}';\n`;
+                    if (shape.fillColor) {
                         code += `ctx.fill();\n`;
                     }
-                    code += `ctx.strokeStyle = '${shape.stroke}';\n`;
-                    code += `ctx.lineWidth = ${shape.lineWidth};\n`;
                     code += `ctx.stroke();\n`;
                     break;
                 }
